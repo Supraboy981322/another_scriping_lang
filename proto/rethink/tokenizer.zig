@@ -73,7 +73,41 @@ pub const Tokenizer = struct {
             if (opts.substitute_null) |c| return c;
             return null;
         };
-        return b;
+        return try self.seek_hook(opts, b);
+    }
+
+    pub fn nextEOF(self:*Tokenizer) SeekError!u8 {
+        return try self.next(.{ .null_on_eof = false });
+    }
+
+    pub fn seek_hook(
+        self:*Tokenizer,
+        comptime opts:SeekOpts,
+        byte:if (opts.null_on_eof) ?u8 else u8,
+    ) SeekError!if (opts.null_on_eof) ?u8 else u8 {
+        const b =
+            if (opts.null_on_eof)
+                if (byte) |b| b else return byte
+            else
+                byte;
+
+        switch (b) {
+            '#' => if (try self.peekEOF() == '(') {
+                var depth:usize = 1;
+                _ = try self.next(.{});
+                while (true) {
+                    switch (try self.nextEOF()) {
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        else => {},
+                    }
+                    if (depth == 0) return self.next(opts);
+                } else
+                    return error.EndOfFile;
+            },
+            else => {},
+        }
+        return byte;
     }
 
     pub fn peek(
@@ -87,7 +121,7 @@ pub const Tokenizer = struct {
             if (opts.substitute_null) |c| return c;
             return null;
         };
-        return b;
+        return try self.seek_hook(opts, b);
     }
 
     pub fn peekEOF(self:*Tokenizer) SeekError!u8 {
