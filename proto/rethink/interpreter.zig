@@ -242,8 +242,6 @@ pub const Block = struct {
                     else => return error.MissplacedSymbol,
                 }
                 if (depth == 0) {
-                    for (mem.items) |token|
-                        std.debug.print("{any}\n", .{token});
                     return try mem.toOwnedSlice(self.alloc);
                 }
                 continue;
