@@ -279,7 +279,7 @@ pub const Block = struct {
 
         if (std.mem.eql(u8, "main", self.name.?)) {
             if (args.len == 1) if (args[0].type == .void) return;
-            if (args.len > 0) if (args[0].type != .string)
+            if (args.len > 0) if (args[0].type != .list)
                 @panic("TODO: \"juicy main\" as the rest of the Zig community calls it");
         }
 
