@@ -19,6 +19,7 @@ pub const Arg = union(enum) {
     plain:usize,
     keyword:ArgKeyword,
     complex:[]u8, //parsed when used  TODO: advanced arg stuff
+    token:*Token,
     pub const ArgKeyword = enum {
         @",,", splat, //splat
         count,
