@@ -215,7 +215,7 @@ pub const Tokenizer = struct {
                         .type = .{ .block = block }
                     };
                     if (label_name) |label|
-                        try res.to_namespace(label, as_token)
+                        try res.to_namespace(label, false, as_token)
                     else
                         try res.code.append(self.alloc, as_token);
                 },
@@ -442,7 +442,7 @@ pub const Tokenizer = struct {
                         );
 
                     const function = try self.collect_fn(alloc, mem);
-                    try res.to_namespace(function.name, function.token);
+                    try res.to_namespace(function.name, false, function.token);
 
                     return .{};
                 },

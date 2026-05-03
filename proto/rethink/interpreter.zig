@@ -22,9 +22,9 @@ pub const Interpreter = struct {
     pub fn do(_:*Interpreter, base:std.process.Init.Minimal, block:Block) !?Token {
         const alloc = block.alloc;
         if (block.namespace.get("main")) |*entry| {
-            if (entry.type == .block) {
+            if (entry.tok.type == .block) {
                 errdefer std.debug.print("root\n", .{});
-                var main = entry.type.block;
+                var main = entry.tok.type.block;
                 var args:std.ArrayList(Token) = .empty;
                 defer args.deinit(alloc);
                 if (main.params.len > 0) blk: {
@@ -53,9 +53,11 @@ pub const Interpreter = struct {
                 }
                 var itr = block.namespace.iterator();
                 while (itr.next()) |name_entry| {
+                    const value = name_entry.value_ptr.*;
                     try main.to_namespace(
                         @constCast(name_entry.key_ptr.*),
-                        name_entry.value_ptr.*
+                        value.changeable,
+                        value.tok,
                     );
                 }
                 _ = try main.run(args.items);
@@ -72,7 +74,7 @@ pub const Block = struct {
     args:?[]Token = null,
     name:?[]u8, //null for root
     code:std.ArrayList(Token), //so I can iterate backwords, popping off of it as I go
-    namespace:std.StringHashMap(Token),
+    namespace:std.StringHashMap(struct{ tok:Token, changeable:bool }),
     alloc:std.mem.Allocator,
     arena:std.heap.ArenaAllocator,
     is_label:bool = true,
@@ -87,8 +89,11 @@ pub const Block = struct {
             .is_label = !is_fn,
         };
     }
-    pub fn to_namespace(self:*Block, name:[]u8, thing:Token) !void {
-        try self.namespace.put(try self.alloc.dupe(u8, name), thing);
+    pub fn to_namespace(self:*Block, name:[]u8, changeable:bool, thing:Token) !void {
+        try self.namespace.put(
+            try self.alloc.dupe(u8, name),
+            .{ .tok = thing, .changeable = changeable }
+        );
     }
     pub fn deinit(self:*Block, alloc:std.mem.Allocator) void {
         self.code.deinit(alloc);
@@ -111,14 +116,14 @@ pub const Block = struct {
                     _ = Builtins.run(ident, passed_args) catch |e| {
                         if (e == error.InvalidBuiltin) {
                             if (self.namespace.get(ident)) |*func| {
-                                if (func.type != .block)
+                                if (func.tok.type != .block)
                                     return error.NotFunction
-                                else if (func.type.block.name) |_|
-                                    _ = try @constCast(func).type.block.run(passed_args)
+                                else if (func.tok.type.block.name) |_|
+                                    _ = try @constCast(func).tok.type.block.run(passed_args)
                                 else
                                     return error.NotFunction;
                             } else {
-                                std.debug.print("\n|{s}|\n", .{ident});
+                                std.debug.print("\n{s}(...) <- ", .{ident});
                                 return error.UnknownIdentifier;
                             }
                         } else
@@ -129,8 +134,10 @@ pub const Block = struct {
                 .block => |*block| {
                     var blk = block.*;
                     var itr = self.namespace.iterator();
-                    while (itr.next()) |entry|
-                        try blk.to_namespace(@constCast(entry.key_ptr.*), entry.value_ptr.*);
+                    while (itr.next()) |entry| {
+                        const v = entry.value_ptr.*;
+                        try blk.to_namespace(@constCast(entry.key_ptr.*), v.changeable, v.tok);
+                    }
                     _ = try blk.run(@constCast(&[_]Token{}));
                 },
 
@@ -141,7 +148,11 @@ pub const Block = struct {
                 .variable => |variable| switch (variable.value) {
                     .declaration => |declaration| {
                         // TODO: refactor namespace to track var type (set vs let)
-                        try self.to_namespace(declaration.name, .{ .type = declaration.value.* });
+                        try self.to_namespace(
+                            declaration.name,
+                            variable.type orelse .set != .set,
+                            .{ .type = declaration.value.* }
+                        );
                     },
                     .name => |name| {
                         if (self.code.items.len <= i+2)
@@ -166,7 +177,10 @@ pub const Block = struct {
                         const want = @intFromEnum(assignee.type);
                         if (have != want) return error.TypeMissmatch;
                         const original = self.namespace.getPtr(name.name) orelse unreachable; //uncaught
-                        original.* = assigner;
+                        if (original.*.changeable)
+                            original.*.tok = assigner
+                        else
+                            return error.NotChangeable;
                     },
                     else => return error.UnexpectedToken,
                 },
@@ -191,10 +205,9 @@ pub const Block = struct {
                     else => unreachable,
                 },
                 .name => |name| blk: {
-                    var match = self.namespace.get(name.name) orelse {
-                        std.debug.print("\n|{any}|\n", .{name});
+                    var match = (self.namespace.get(name.name) orelse {
                         return error.UnknownVariable;
-                    };
+                    }).tok;
                     if (name.flag) |flag| {
                         // TODO: stuff otherthan list indexing
                         if (match.type == .list) switch (flag.list) {
@@ -206,9 +219,9 @@ pub const Block = struct {
                                     usize, match.type.list.count()
                                 )}),
                                 .splat, .@",," => {
-                                    var m = self.namespace.get(name.name) orelse {
+                                    var m = (self.namespace.get(name.name) orelse {
                                         return error.UnknownVariable;
-                                    };
+                                    }).tok;
                                     return try m.type.list.splat(self.alloc);
                                 },
                             }
@@ -290,7 +303,7 @@ pub const Block = struct {
         for (self.params, 0..) |param, i| switch (param.type) {
             .string, .bool, .void => {
                 if (args[i].type == param.type)
-                    try self.to_namespace(param.name orelse unreachable, args[i])
+                    try self.to_namespace(param.name orelse unreachable, false, args[i])
                 else
                     return error.ArgTypeMissmatch;
             },
@@ -300,13 +313,13 @@ pub const Block = struct {
                 const expect = @tagName(args[i].type.number);
                 const have = @tagName(param.type);
                 if (std.mem.eql(u8, expect, have))
-                    try self.to_namespace(param.name orelse unreachable, args[i])
+                    try self.to_namespace(param.name orelse unreachable, false, args[i])
                 else
                     return error.ArgTypeMissmatch;
             },
             .list => {
                 if (args[i].type == param.type)
-                    try self.to_namespace(param.name orelse unreachable, args[i])
+                    try self.to_namespace(param.name orelse unreachable, false, args[i])
                 else
                     return error.ArgTypeMissmatch;
             },
