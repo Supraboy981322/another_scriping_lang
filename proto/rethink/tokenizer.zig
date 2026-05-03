@@ -8,7 +8,6 @@ const Arg = types.Arg;
 const Block = types.Block;
 
 pub const TokenizerError = error {
-    EndOfFile,
     BadTypeHint,
     MissplacedSymbol,
     InvalidParameterType,
@@ -24,9 +23,14 @@ pub const TokenizerError = error {
     InvalidSymbol,
     NotInitialized,
 } || std.mem.Allocator.Error
-  || std.Io.Reader.DelimiterError
   || hlp.DepthTrackerError
+  || SeekError
 ;
+
+pub const SeekError = error {
+    EndOfFile,
+    NotInitialized,
+} || std.Io.Reader.DelimiterError;
 
 pub const Tokenizer = struct {
     alloc:std.mem.Allocator,
@@ -61,7 +65,7 @@ pub const Tokenizer = struct {
     pub fn next(
         self:*Tokenizer,
         comptime opts:SeekOpts
-    ) !if (opts.null_on_eof) ?u8 else u8 {
+    ) SeekError!if (opts.null_on_eof) ?u8 else u8 {
         if (self.reader == null) return error.NotInitialized;
         const b = self.reader.?.takeByte() catch |e| {
             if (e != error.EndOfStream) return e;
@@ -75,7 +79,7 @@ pub const Tokenizer = struct {
     pub fn peek(
         self:*Tokenizer,
         comptime opts:SeekOpts
-    ) !if (opts.null_on_eof) ?u8 else u8 {
+    ) SeekError!if (opts.null_on_eof) ?u8 else u8 {
         if (self.reader == null) return error.NotInitialized;
         const b = self.reader.?.peekByte() catch |e| {
             if (e != error.EndOfStream) return e;
@@ -86,7 +90,7 @@ pub const Tokenizer = struct {
         return b;
     }
 
-    pub fn peekEOF(self:*Tokenizer) !u8 {
+    pub fn peekEOF(self:*Tokenizer) SeekError!u8 {
         return self.peek(.{ .null_on_eof = false });
     }
 
