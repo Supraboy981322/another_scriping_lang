@@ -46,9 +46,7 @@ pub const Interpreter = struct {
                             var itr = base.args.iterate();
                             while (itr.next()) |arg|
                                 try list.append(alloc, .{ .string  = try alloc.dupe(u8, arg) });
-                            try main.to_namespace(@constCast("args"), .{
-                                .type = .{ .list = list }
-                            });
+                            try args.append(alloc, .{ .type = .{ .list = list  } });
                         },
                         else => @panic("invalid main arg"),
                     };
@@ -216,6 +214,7 @@ pub const Block = struct {
                             }
                         };
                     }
+                    if (match.type != .variable) return @constCast(&[_]Token{ match });
                     break :blk match;
                 },
                 else => unreachable,
@@ -252,7 +251,8 @@ pub const Block = struct {
             switch (tok.type) {
                 .variable => |variable| {
                     const resolved = try self.resolve_var(variable);
-                    try mem.appendSlice(self.alloc, resolved);
+                    for (resolved) |v|
+                        try mem.append(self.alloc, v);
                     continue;
                 },
                 .ident => unreachable,
