@@ -44,4 +44,7 @@ fn var_test() {
   print("assign 'foo'");
   $foo = "buzz";
   print("'foo' is" $foo);
+
+  print("print both");
+  print("both:" $foo $baz);
 }
