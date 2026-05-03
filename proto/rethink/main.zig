@@ -45,15 +45,12 @@ pub fn main(init:std.process.Init) !void {
     var file_reader = file.reader(init.io, &file_buf);
     const reader = &file_reader.interface;
 
-    std.debug.print("\x1b[2K\rtokenizing", .{});
     var tokenizer:@import("tokenizer.zig").Tokenizer = try .init(alloc);
     var tokens = try tokenizer.do(reader, null);
 
-    std.debug.print("\x1b[2K\rfinalizing", .{});
     var finalizer:@import("finalizer.zig").Finalizer = try .init(alloc);
     _ = try finalizer.do(&tokens);
 
-    std.debug.print("\x1b[2K\rinterpreting\n\n", .{});
     var interpreter:@import("interpreter.zig").Interpreter = try .init(init.io, alloc);
     _ = try interpreter.do(init.minimal, tokens);
 }
