@@ -33,6 +33,7 @@ pub const SeekError = error {
 } || std.Io.Reader.DelimiterError;
 
 pub const Tokenizer = struct {
+    logger:@import("logger.zig").Logger = .init,
     alloc:std.mem.Allocator,
     reader:?*std.Io.Reader = null,
     arena:std.heap.ArenaAllocator,
@@ -150,6 +151,14 @@ pub const Tokenizer = struct {
     }
 
     pub fn recurse(self:*Tokenizer, name:?[]u8) !Block {
+        try self.logger.task(.start,
+            "tokenizer.recurse(\"{s}\")",
+            .{name orelse "[unlabled block]"}
+        );
+        defer self.logger.task(.done,
+            "tokenizer.recurse(\"{s}\")",
+            .{name orelse "[unlabled block]"}
+        ) catch {};
         var tokenizer:Tokenizer = try .init(self.alloc);
         return try tokenizer.do(self.reader.?, name);
     }
@@ -159,6 +168,14 @@ pub const Tokenizer = struct {
         reader:*std.Io.Reader,
         name:?[]u8
     ) TokenizerError!Block {
+        try self.logger.stage(.start,
+            "tokenizer.do(\"{s}\")",
+            .{name orelse "[unlabled block]"}
+        );
+        defer self.logger.stage(.done,
+            "tokenizer.do(\"{s}\")",
+            .{name orelse "[unlabled block]"}
+        ) catch {};
 
         // TODO:  helpers to dupe result so arena can be reset
         // defer self.arena.reset(.free_all);
