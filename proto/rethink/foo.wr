@@ -1,7 +1,7 @@
 fn main(args:list[string]) {
   var_test();
-  list_test($args);
   arg_count("foo" "bar" "baz quz");
+  list_test($args);
   block_test();
   list_literal();
 }
@@ -41,9 +41,9 @@ fn var_test() {
   let baz = "qux";
   print("'baz' is" $baz);
 
-  print("assign 'foo'");
-  $foo = "buzz";
-  print("'foo' is" $foo);
+  print("assign 'baz'");
+  $baz = "buzz";
+  print("'baz' is" $baz);
 
   print("print both");
   print("both:" $foo $baz);
