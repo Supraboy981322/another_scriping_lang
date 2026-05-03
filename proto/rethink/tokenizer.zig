@@ -22,6 +22,7 @@ pub const TokenizerError = error {
     IllegalType,
     UnexpectedByte,
     InvalidSymbol,
+    NotInitialized,
 } || std.mem.Allocator.Error
   || std.Io.Reader.DelimiterError
   || hlp.DepthTrackerError
@@ -49,6 +50,65 @@ pub const Tokenizer = struct {
     pub fn deinit(self:*Tokenizer) void {
         self.mem.deinit(self.alloc);
         _ = self.arena.deinit();
+    }
+
+
+    pub const SeekOpts = struct {
+        null_on_eof:bool = true,
+        substitute_null:?u8 = null,
+    };
+
+    pub fn next(
+        self:*Tokenizer,
+        comptime opts:SeekOpts
+    ) !if (opts.null_on_eof) ?u8 else u8 {
+        if (self.reader == null) return error.NotInitialized;
+        const b = self.reader.?.takeByte() catch |e| {
+            if (e != error.EndOfStream) return e;
+            if (!opts.null_on_eof) return error.EndOfFile;
+            if (opts.substitute_null) |c| return c;
+            return null;
+        };
+        return b;
+    }
+
+    pub fn peek(
+        self:*Tokenizer,
+        comptime opts:SeekOpts
+    ) !if (opts.null_on_eof) ?u8 else u8 {
+        if (self.reader == null) return error.NotInitialized;
+        const b = self.reader.?.peekByte() catch |e| {
+            if (e != error.EndOfStream) return e;
+            if (!opts.null_on_eof) return error.EndOfFile;
+            if (opts.substitute_null) |c| return c;
+            return null;
+        };
+        return b;
+    }
+
+    pub fn peekEOF(self:*Tokenizer) !u8 {
+        return self.peek(.{ .null_on_eof = false });
+    }
+
+    pub fn take_delim(
+        self:*Tokenizer,
+        comptime end:u8,
+        comptime opts:SeekOpts,
+    ) !if (opts.null_on_eof) ?[]u8 else []u8 {
+        var buf:std.ArrayList(u8) = .empty;
+        defer buf.deinit(self.alloc);
+        var string:?u8 = null;
+        while (try self.next(opts)) |b| {
+            if (string) |s| {
+                if (b == s) string = null;
+                try buf.append(self.alloc, b);
+                continue;
+            } else
+                if (b == '"') string = b;
+            if (b == end) return try buf.toOwnedSlice(self.alloc);
+            try buf.append(self.alloc, b);
+        }
+        return null;
     }
 
     pub fn recurse(self:*Tokenizer, name:?[]u8) !Block {
@@ -79,7 +139,7 @@ pub const Tokenizer = struct {
         var label_name:?[]u8 = null;
         var string:?u8 = null;
 
-        while (reader.takeByte() catch null) |b| {
+        while (try self.next(.{})) |b| {
             if (esc) {
                 esc = false;
                 try mem.append(alloc, b);
@@ -100,7 +160,7 @@ pub const Tokenizer = struct {
             }
 
             if (std.ascii.isWhitespace(b) or Token.byte_looks_like_symbol(b)) {
-                const info = try self.whitespace(alloc, reader, &res, &mem, b);
+                const info = try self.whitespace(alloc, &res, &mem, b);
                 if (info.skip) continue;
             }
 
@@ -125,7 +185,7 @@ pub const Tokenizer = struct {
                 '.' => {
                     if (mem.items.len > 0)
                         @panic("TODO: dereference into structs");
-                    const literal = try self.dot_literal(alloc, reader, &mem);
+                    const literal = try self.dot_literal(alloc, &mem);
                     try res.code.append(self.alloc, literal);
                 },
                 ':' => {
@@ -143,14 +203,13 @@ pub const Tokenizer = struct {
         self:*Tokenizer,
         comptime start:u8,
         comptime end:u8,
-        reader:*std.Io.Reader,
         alloc:std.mem.Allocator,
         mem:*std.ArrayList(u8),
     ) ![]Token {
         var res:std.ArrayList(Token) = .empty;
         defer res.deinit(alloc);
         var depth:usize = 1;
-        while (reader.takeByte() catch null) |b| {
+        while (try self.next(.{})) |b| {
             switch (b) {
                 start => depth += 1,
                 end => depth -= 1,
@@ -181,17 +240,16 @@ pub const Tokenizer = struct {
     pub fn dot_literal(
         self:*Tokenizer,
         alloc:std.mem.Allocator,
-        reader:*std.Io.Reader,
         mem:*std.ArrayList(u8)
     ) !Token {
         std.debug.assert(mem.items.len == 0);
-        const literal_type = try reader.takeByte();
+        const literal_type = try self.next(.{}) orelse return error.EndOfFile;
         switch (literal_type) {
             '{' => @panic("TODO: object literal"),
             '[' => {
                 var list:types.List = .init(.DYNAMIC);
                 const values = try self.collect_within(
-                    '[', ']', reader, alloc, mem
+                    '[', ']', alloc, mem
                 );
                 try list.append_many_fat(self.alloc, values);
                 _ = try list.check_type(.{ .solidify = true });
@@ -204,19 +262,19 @@ pub const Tokenizer = struct {
     pub fn collect_fn(
         self:*Tokenizer,
         alloc:std.mem.Allocator,
-        reader:*std.Io.Reader,
         mem:*std.ArrayList(u8),
     ) !CollectResult {
-        const fn_name = try reader.takeDelimiter('(') orelse {
+        const fn_name = try self.take_delim('(', .{ .null_on_eof = true }) orelse {
             return error.EndOfFile;
         };
 
         var params:std.ArrayList(types.Param) = .empty;
         defer params.deinit(alloc);
 
-        var c = while (reader.takeByte() catch null) |c| {
+        var c:u8 = try self.next(.{ .null_on_eof = false });
+        c =while (true) : (c = try self.next(.{ .null_on_eof = false })) {
             if (std.ascii.isWhitespace(c) or c == ')') {
-                if (mem.items.len == 0 and c == ')') break try reader.peekByte();
+                if (mem.items.len == 0 and c == ')') break try self.peekEOF();
                 var type_hint_string:?[]u8 = null;
                 if (std.mem.count(u8, mem.items, "[") > 0) blk: {
                     _, const dumb_const_type_hint_string = std.mem.cut(
@@ -258,7 +316,7 @@ pub const Tokenizer = struct {
                 try params.append(self.alloc, skeleton);
             }
             switch (c) {
-                ')' => break try reader.peekByte(),
+                ')' => break try self.peekEOF(),
                 '(' => return error.MissplacedSymbol,
                 ':' => {
                     try params.append(self.alloc,
@@ -271,7 +329,7 @@ pub const Tokenizer = struct {
             }
         } else
             return error.EndOfFile;
-        while (std.ascii.isWhitespace(c)) c = try reader.takeByte();
+        while (std.ascii.isWhitespace(c)) c = try self.next(.{ .null_on_eof = false });
         var block:Block = try self.recurse(fn_name);
         block.params = try params.toOwnedSlice(self.alloc);
         return .{
@@ -283,7 +341,6 @@ pub const Tokenizer = struct {
     pub fn collect_var(
         self:*Tokenizer,
         alloc:std.mem.Allocator,
-        reader:*std.Io.Reader,
         _:*Block,
         mem:*std.ArrayList(u8),
         var_type:Token.Keywords
@@ -294,8 +351,8 @@ pub const Tokenizer = struct {
         var name:?[]u8 = null;
         var symbol:?Token.Symbols = null;
 
-        while (std.ascii.isWhitespace(reader.peekByte() catch 0)) reader.toss(1);
-        while (reader.takeByte() catch null) |b| {
+        while (std.ascii.isWhitespace(try self.peekEOF())) self.reader.?.toss(1);
+        while (try self.next(.{})) |b| {
             if (std.ascii.isWhitespace(b) or b == ';') if (mem.items.len > 0) {
                 const raw = try mem.toOwnedSlice(self.alloc);
                 if (name == null)
@@ -331,7 +388,6 @@ pub const Tokenizer = struct {
     pub fn whitespace(
         self:*Tokenizer,
         alloc:std.mem.Allocator,
-        reader:*std.Io.Reader,
         res:*Block,
         mem:*std.ArrayList(u8),
         b:u8
@@ -347,7 +403,7 @@ pub const Tokenizer = struct {
                             self.alloc, (try Token.make_from_byte(b)).?
                         );
 
-                    const function = try self.collect_fn(alloc, reader, mem);
+                    const function = try self.collect_fn(alloc, mem);
                     try res.to_namespace(function.name, function.token);
 
                     return .{};
@@ -355,7 +411,7 @@ pub const Tokenizer = struct {
                 .set, .let => |var_type| {
                     if (!std.ascii.isWhitespace(b))
                         return error.UnexpectedByte;
-                    const new_var = try self.collect_var(alloc, reader, res, mem, var_type);
+                    const new_var = try self.collect_var(alloc, res, mem, var_type);
                     try res.code.append(self.alloc, new_var.token);
                     return .{};
                 },
