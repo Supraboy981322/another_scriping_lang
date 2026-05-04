@@ -23,6 +23,7 @@ pub const TokenizerError = error {
     InvalidSymbol,
     NotInitialized,
     InvalidBuiltin,
+    MissingFlag,
 } || std.mem.Allocator.Error
   || hlp.DepthTrackerError
   || SeekError

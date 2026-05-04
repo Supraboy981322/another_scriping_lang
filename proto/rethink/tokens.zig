@@ -123,6 +123,7 @@ pub const Func = union(enum) {
     builtin:Builtins,  //starts with '#'
     local:[]u8,
     external:[]u8, //starts with '@'
+    shell:[]u8,
 };
 
 pub const Ident = union(enum) {
@@ -244,14 +245,28 @@ pub const Token = union(enum) {
             return .{ .type = .{ .keyword = keyword } };
 
         if(raw.len > 1) {
-            if (raw[0] == '$')
-                return .{ .type = .{ .ident = .{ .variable = try Variable.make(raw[1..]) } } };
+            if (raw[0] == '$') return .{ .type = .{ .ident = .{
+                .func = .{ .shell = raw[1..] }
+            } } };
 
-            if (raw[0] == '#') return .{ .type = .{ .ident = .{ .func = .{
-                .builtin = std.meta.stringToEnum(Builtins, raw[1..]) orelse {
+            if (raw[0] == '#') {
+                const name =
+                    if (std.mem.find(u8, raw[1..], "[")) |name_end| 
+                        raw[1..name_end+1]
+                    else
+                        raw[1..];
+                const match = std.meta.stringToEnum(Builtins, name) orelse {
+                    // TODO: decide how I want to cancel the logger so this isn't clobbered
+                    std.debug.print("\r\x1b[2K|{s}| -> ", .{name});
                     return error.InvalidBuiltin;
-                }
-            } } } };
+                };
+                return .{ .type = .{ .ident =
+                    if (Builtins.is_func(match))
+                        .{ .func = .{ .builtin = match } }
+                    else
+                        .{ .variable = try Builtins.make_var(match, raw[1..]) }
+                } };
+            }
 
             if (raw[0] == '@') @panic("TODO: module system");
 
@@ -259,8 +274,8 @@ pub const Token = union(enum) {
                 return .{ .type = .{ .string = raw[1..raw.len-1] } };
         }
 
-        //return .{ .type = .{ .ident = .{ .unknown = raw } } };
-        return .{ .type = .{ .ident = .{ .func = .{ .local = raw } } } };
+        return .{ .type = .{ .ident = .{ .unknown = raw } } };
+        //return .{ .type = .{ .ident = .{ .func = .{ .local = raw } } } };
     }
 
     pub fn make_from_byte(b:u8) !?Token {

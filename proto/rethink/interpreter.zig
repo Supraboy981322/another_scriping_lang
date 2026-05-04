@@ -136,6 +136,7 @@ pub const Block = struct {
                     return error.UnknownIdentifier;
                 }
             },
+            .shell => |cmd| _ = try self.exec(cmd, passed_args),
             .external => unreachable, // TODO: module system
         }
         unreachable; //uncaught; 'func' couldn't return value
@@ -183,6 +184,11 @@ pub const Block = struct {
             else => return error.UnexpectedToken,
         }
         return null;
+    }
+
+    pub fn exec(self:*Block, name:[]u8, args:[]Token) InterpreterError!?Token{
+        _ = .{ self, name, args };
+        unreachable; // TODO: shell commands
     }
 
     pub fn run(self:*Block, args:[]Token) InterpreterError!?Token {
