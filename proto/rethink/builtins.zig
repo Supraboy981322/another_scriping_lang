@@ -16,6 +16,9 @@ pub const Builtins = enum {
         }
     }
 
+    pub fn is_builtin(name:[]u8) bool {
+        return std.meta.stringToEnum(Builtins, name) != null;
+    }
 };
 
 pub fn print(args:[]Token) !void {

@@ -78,6 +78,7 @@ pub const Block = struct {
     alloc:std.mem.Allocator,
     arena:std.heap.ArenaAllocator,
     is_label:bool = true,
+
     pub fn init(alloc:std.mem.Allocator, name:?[]u8, params:?[]Param, is_fn:bool) Block {
         return .{
             .namespace = .init(alloc),
@@ -113,22 +114,21 @@ pub const Block = struct {
                 .ident => |ident| {
                     const passed_args = try self.collect_args(&i, tok);
                     defer self.alloc.free(passed_args);
-                    _ = Builtins.run(ident, passed_args) catch |e| {
-                        if (e == error.InvalidBuiltin) {
-                            if (self.namespace.get(ident)) |*func| {
-                                if (func.tok.type != .block)
-                                    return error.NotFunction
-                                else if (func.tok.type.block.name) |_|
-                                    _ = try @constCast(func).tok.type.block.run(passed_args)
-                                else
-                                    return error.NotFunction;
-                            } else {
-                                std.debug.print("\n{s}(...) <- ", .{ident});
-                                return error.UnknownIdentifier;
-                            }
-                        } else
-                            return e;
-                    };
+                    if (Builtins.is_builtin(ident)) {
+                        _ = try Builtins.run(ident, passed_args);
+                    } else {
+                        if (self.namespace.get(ident)) |*func| {
+                            if (func.tok.type != .block)
+                                return error.NotFunction
+                            else if (func.tok.type.block.name) |_|
+                                _ = try @constCast(func).tok.type.block.run(passed_args)
+                            else
+                                return error.NotFunction;
+                        } else {
+                            std.debug.print("\n{s}(...) <- ", .{ident});
+                            return error.UnknownIdentifier;
+                        }
+                    }
                 },
 
                 .block => |*block| {
