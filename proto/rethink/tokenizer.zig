@@ -7,6 +7,7 @@ const Variable = types.Variable;
 const Arg = types.Arg;
 const Block = types.Block;
 
+// TODO: move these to the helpers and just merge the types
 pub const TokenizerError = error {
     BadTypeHint,
     MissplacedSymbol,
