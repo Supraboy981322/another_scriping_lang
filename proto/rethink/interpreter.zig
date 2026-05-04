@@ -8,6 +8,22 @@ const Param = types.Param;
 const List = types.List;
 const Builtins = @import("builtins.zig").Builtins;
 
+pub const InterpreterError = error {
+    EndOfFile,
+    IndexOutOfBounds,
+    InvalidAssignment,
+    // TODO: move these to finalizer
+    UnknownIdentifier,
+    NotFunction, 
+    UnexpectedToken,
+    NotChangeable,
+    TypeMissmatch,
+    MissplacedSymbol,
+    UnknownVariable,
+    WrongArgCount,
+    ArgTypeMissmatch,
+} || std.mem.Allocator.Error;
+
 pub const Interpreter = struct {
     alloc:std.mem.Allocator,
     io:std.Io,
