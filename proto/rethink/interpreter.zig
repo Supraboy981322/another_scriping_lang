@@ -62,7 +62,7 @@ pub const Interpreter = struct {
                             var itr = base.args.iterate();
                             while (itr.next()) |arg|
                                 try list.append(alloc, .{ .string  = try alloc.dupe(u8, arg) });
-                            try args.append(alloc, .{ .type = .{ .list = list  } });
+                            try args.append(alloc, .no_line_num(.{ .list = list }));
                         },
                         else => @panic("invalid main arg"),
                     };
@@ -149,7 +149,7 @@ pub const Block = struct {
                 try self.to_namespace(
                     declaration.name,
                     variable.type orelse .set != .set,
-                    .{ .type = declaration.value.* }
+                    .no_line_num(declaration.value.*)
                 );
             },
             .name => |name| {
@@ -231,7 +231,7 @@ pub const Block = struct {
     }
 
     pub fn resolve_var(self:*Block, origin:Variable) ![]Token {
-        var token:Token = .{ .type = .{ .ident = .{ .variable = origin } } };
+        var token:Token = .no_line_num(.{ .ident = .{ .variable = origin } });
         while (token.is_variable()) {
             const variable = token.type.ident.variable;
             token = switch (variable.value) {
