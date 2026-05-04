@@ -90,10 +90,15 @@ pub const Block = struct {
     args:?[]Token = null,
     name:?[]u8, //null for root
     code:std.ArrayList(Token), //so I can iterate backwords, popping off of it as I go
-    namespace:std.StringHashMap(struct{ tok:Token, changeable:bool }),
+    namespace:std.StringHashMap(NamespaceEntry),
     alloc:std.mem.Allocator,
     arena:std.heap.ArenaAllocator,
     is_label:bool = true,
+
+    pub const NamespaceEntry = struct {
+        tok:Token,
+        changeable:bool
+    };
 
     pub fn init(alloc:std.mem.Allocator, name:?[]u8, params:?[]Param, is_fn:bool) Block {
         return .{

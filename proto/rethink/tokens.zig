@@ -61,10 +61,11 @@ pub const Variable = struct {
     pub const Value = union(enum) {
         arg:Arg,
         name:NamedVariable,
-        declaration:struct {
+        declaration:Declaration,
+        pub const Declaration = struct {
             name:[]u8,
             value:*Token.TokenType,
-        },
+        };
     };
 
     pub const Type = enum { set, let };
@@ -84,7 +85,7 @@ pub const Variable = struct {
     };
 
     pub fn make(raw:[]u8) !Variable {
-        if (Arg.make(raw)) |match| 
+        if (Arg.make(raw)) |match|
             return .{ .value = .{ .arg = match } };
 
         var named:Variable = .{
