@@ -6,11 +6,13 @@ const Block = types.Block;
 
 pub const Builtins = enum {
     print,
+    to_string,
     args,
 
-    pub fn run(which:Builtins, args:[]Token) !?Token {
+    pub fn run(alloc:std.mem.Allocator, which:Builtins, args:[]Token) !?Token {
         return switch (which) {
             .print => try print(args),
+            .to_string => try to_string(alloc, args),
             else => unreachable, //not a function
         };
     }
@@ -61,4 +63,35 @@ pub fn print(args:[]Token) !?Token {
         }
     }
     return null;
+}
+
+pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
+    var res:std.ArrayList(u8) = .empty;
+    defer res.deinit(alloc);
+    defer _ = res.pop();
+    for (args) |arg| {
+        switch (arg.type) {
+            .string => |str| try res.appendSlice(alloc, str),
+            .bool => |b| try res.appendSlice(alloc, if (b) "true" else "false"),
+            .number => |num| switch (num) {
+                inline .int, .uint => |n| try res.print(alloc, "{d}", .{n}),
+            },
+            .void => {},
+            .byte => |b| try res.print(alloc, "{x}", .{b}),
+            .list => |*list| {
+                try res.appendSlice(alloc, ".[ ");
+                const as_toks = try @constCast(list).splat(alloc);
+                const as_string = try to_string(alloc, as_toks);
+                try res.appendSlice(alloc, as_string.type.string);
+                try res.appendSlice(alloc, " ]");
+            },
+            .block => |blk| try res.print(alloc,
+                "<<block: {s}>>",
+                .{blk.name orelse "[unlabeled]"}
+            ),
+            else => unreachable,
+        }
+        try res.append(alloc, ' ');
+    }
+    return .no_line_num(.{ .string = try res.toOwnedSlice(alloc) });
 }

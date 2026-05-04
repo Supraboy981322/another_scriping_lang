@@ -127,7 +127,7 @@ pub const Block = struct {
         const passed_args = try self.collect_args(i, tok);
         defer self.alloc.free(passed_args);
         switch (func) {
-            .builtin => |builtin| return try Builtins.run(builtin, passed_args),
+            .builtin => |builtin| return try Builtins.run(self.alloc, builtin, passed_args),
             .local => |local| {
                 if (self.namespace.get(local)) |*f| {
                     if (f.tok.type != .block)
