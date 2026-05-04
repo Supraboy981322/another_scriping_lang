@@ -12,7 +12,7 @@ pub const Finalizer = struct {
         self:*Finalizer,
         block:*types.Block,
         parent:?*types.Block
-    ) !types.Block {
+    ) !*types.Block {
         try self.logger.task(.start, "finalizer.recurse(\"{s}\", \"{s}\")", .{
             block.name orelse "[unlabeled block]",
             if (parent) |p| p.name orelse "[unlabeled block]" else "[root]"
@@ -24,8 +24,7 @@ pub const Finalizer = struct {
 
         var block_itr = block.namespace.iterator();
         while (block_itr.next()) |entry| {
-            var value = entry.value_ptr.*;
-            _ = switch (value.tok.type) {
+            _ = switch (entry.value_ptr.tok.type) {
                 .block => |*blk| try self.recurse(blk, block),
                 else => {},
             };
@@ -40,12 +39,12 @@ pub const Finalizer = struct {
                 try block.to_namespace(name, value.changeable, value.tok);
             }
         }
-        return block.*;
+        return block;
     }
 
     pub fn do(self:*Finalizer, block:*types.Block) !types.Block {
         try self.logger.stage(.start, "finalizer", .{});
         defer self.logger.stage(.done, "finalizer", .{}) catch {};
-        return try self.recurse(block, null);
+        return (try self.recurse(block, null)).*;
     }
 };
