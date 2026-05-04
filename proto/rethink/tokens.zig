@@ -132,8 +132,9 @@ pub const Ident = union(enum) {
     unknown:[]u8,
 };
 
-pub const Token = union(enum) {
+pub const Token = struct {
     type:TokenType,
+    line_number:usize,
 
     pub const Types = std.meta.Tag(TokenType);
     pub const TokenType = union(enum) {
@@ -166,11 +167,11 @@ pub const Token = union(enum) {
         }
         // TODO: rename this
         pub fn new(raw:[]u8) !TokenType {
-            return (try Token.make(raw) orelse unreachable).type;
+            return (try Token.make(undefined, raw) orelse unreachable).type;
         }
     };
 
-    pub const @"void":Token = .{ .type = .{ .void = {} } };
+    pub const @"void":Token = .{ .line_number = 0, .type = .{ .void = {} } };
 
     pub const TypeHint = union(enum) {
         list:Types,
@@ -221,33 +222,46 @@ pub const Token = union(enum) {
         return std.meta.stringToEnum(Keywords, raw);
     }
 
-    pub fn mk_num(comptime T:type, n:T) Token {
+    pub fn mk_num(line_number:?usize, comptime T:type, n:T) Token {
         return .{
-            .type = .{ .number = switch (@typeInfo(T)) {
-                .int => |info|
-                    if (info.signedness == .signed) .{
-                        .int = @intCast(n),
-                    } else .{
-                        .uint = @intCast(n),
-                    },
-                else => unreachable,
-            }},
+            .line_number = if (line_number) |l| l else 0,
+            .type = .{
+                .number = switch (@typeInfo(T)) {
+                    .int => |info|
+                        if (info.signedness == .signed) .{
+                            .int = @intCast(n),
+                        } else .{
+                            .uint = @intCast(n),
+                        },
+                    else => unreachable,
+                }
+            }
         };
     }
 
-    pub fn make(raw:[]u8) !?Token {
+    fn set_value(self:*Token, value:TokenType) Token {
+        self.type = value;
+        return self.*;
+    }
+
+    pub fn make(line_number:usize, raw:[]u8) !?Token {
         if (raw.len < 1) return null;
 
+        var res:Token = .{
+            .line_number = line_number,
+            .type = undefined,
+        };
+
         if (to_symbol(raw)) |symbol|
-            return .{ .type = .{ .symbol = symbol } };
+            return res.set_value(.{ .symbol = symbol });
 
         if (to_keyword(raw)) |keyword|
-            return .{ .type = .{ .keyword = keyword } };
+            return res.set_value(.{ .keyword = keyword });
 
         if(raw.len > 1) {
-            if (raw[0] == '$') return .{ .type = .{ .ident = .{
+            if (raw[0] == '$') return res.set_value(.{ .ident = .{
                 .func = .{ .shell = raw[1..] }
-            } } };
+            }});
 
             if (raw[0] == '#') {
                 const name =
@@ -260,33 +274,36 @@ pub const Token = union(enum) {
                     std.debug.print("\r\x1b[2K|{s}| -> ", .{name});
                     return error.InvalidBuiltin;
                 };
-                return .{ .type = .{ .ident =
+                return res.set_value(.{ .ident =
                     if (Builtins.is_func(match))
                         .{ .func = .{ .builtin = match } }
                     else
                         .{ .variable = try Builtins.make_var(match, raw[1..]) }
-                } };
+                });
             }
 
             if (raw[0] == '@') @panic("TODO: module system");
 
             if (raw[0] == '"' and raw[raw.len-1] == '"')
-                return .{ .type = .{ .string = raw[1..raw.len-1] } };
+                return res.set_value(.{ .string = raw[1..raw.len-1] });
         }
 
-        return .{ .type = .{ .ident = .{ .unknown = raw } } };
+        return res.set_value(.{ .ident = .{ .unknown = raw } });
         //return .{ .type = .{ .ident = .{ .func = .{ .local = raw } } } };
     }
 
-    pub fn make_from_byte(b:u8) !?Token {
-        return make(@constCast(&[_]u8{b}));
+    pub fn make_from_byte(line_number:usize, b:u8) !?Token {
+        return make(line_number, @constCast(&[_]u8{b}));
     }
 
-    pub fn new(comptime T:type, value:T) Token {
+    pub fn new(line_number:?usize, comptime T:type, value:T) Token {
         return switch (T) {
-            []u8, []const u8 => .{ .type = .{ .string = value } },
+            []u8, []const u8 => .{
+                .line_number = if (line_number) |n| n else 0,
+                .type = .{ .string = value }
+            },
             else => switch (@typeInfo(T)) {
-                .Int, .Float, .ComptimeInt, .ComptimeFloat => mk_num(T, value),
+                .Int, .Float, .ComptimeInt, .ComptimeFloat => mk_num(line_number, T, value),
                 else => @compileError("unsupported type for new() helper")
             }
         };
@@ -306,6 +323,21 @@ pub const Token = union(enum) {
                 self.type.ident == .func
             else
                 false;
+    }
+
+    pub fn is_unknown(self:*Token) bool {
+        return
+            if (self.type == .ident)
+                self.type.ident == .unknown
+            else
+                false;
+    }
+
+    pub fn no_line_num(value:TokenType) Token {
+        return .{
+            .line_number = 0,
+            .type = value,
+        };
     }
 };
 
@@ -346,7 +378,7 @@ pub const List = struct {
         var res:std.ArrayList(Token) = .empty;
         defer res.deinit(alloc);
         for (self.value.items) |entry|
-            try res.append(alloc, .{ .type = entry });
+            try res.append(alloc, .{ .line_number = 0, .type = entry });
         return try res.toOwnedSlice(alloc);
     }
 
@@ -361,7 +393,7 @@ pub const List = struct {
 
     pub fn get_token(self:*List, i:usize) !Token {
         if (self.count() <= i) return error.IndexOutOfBounds;
-        return .{ .type = self.value.items[i] };
+        return .{ .line_number = 0, .type = self.value.items[i] };
     }
 
     pub const TypeCheckOpts = struct {

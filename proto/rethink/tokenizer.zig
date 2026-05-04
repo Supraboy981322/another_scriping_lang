@@ -40,6 +40,7 @@ pub const Tokenizer = struct {
     alloc:std.mem.Allocator,
     reader:?*std.Io.Reader = null,
     arena:std.heap.ArenaAllocator,
+    line_number:usize = 0,
 
     pub const CollectResult = struct {
         name:[]u8,
@@ -94,6 +95,8 @@ pub const Tokenizer = struct {
                 if (byte) |b| b else return byte
             else
                 byte;
+
+        if (b == '\n') self.line_number += 1;
 
         switch (b) {
             '#' => if (try self.peekEOF() == '(') {
@@ -209,6 +212,7 @@ pub const Tokenizer = struct {
                 if (b == s) {
                     string = null;
                     const str:Token = .{
+                        .line_number = self.line_number,
                         .type = .{ .string = try mem.toOwnedSlice(self.alloc) }
                     };
                     try res.code.append(self.alloc, str);
@@ -232,6 +236,7 @@ pub const Tokenizer = struct {
                     var block = try self.recurse(label_name);
                     block.is_label = label_name != null;
                     const as_token:Token = .{
+                        .line_number = self.line_number,
                         .type = .{ .block = block }
                     };
                     if (label_name) |label|
@@ -275,10 +280,10 @@ pub const Tokenizer = struct {
                     if (std.ascii.isWhitespace(b) or Token.byte_looks_like_symbol(b)) {
                         if (mem.items.len > 0) {
                             const raw = try mem.toOwnedSlice(self.alloc);
-                            const new = (try Token.make(raw)).?;
+                            const new = (try Token.make(self.line_number, raw)).?;
                             try res.append(alloc, new);
                         } if (!std.ascii.isWhitespace(b)) {
-                            const new = (try Token.make_from_byte(b)).?;
+                            const new = (try Token.make_from_byte(self.line_number, b)).?;
                             try res.append(alloc, new);
                         }
                     } else
@@ -289,7 +294,7 @@ pub const Tokenizer = struct {
         }
         if (mem.items.len > 0) {
             const raw = try mem.toOwnedSlice(self.alloc);
-            const new = (try Token.make(raw)).?;
+            const new = (try Token.make(self.line_number, raw)).?;
             try res.append(self.alloc, new);
         }
         return try res.toOwnedSlice(self.alloc);
@@ -311,7 +316,10 @@ pub const Tokenizer = struct {
                 );
                 try list.append_many_fat(self.alloc, values);
                 _ = try list.check_type(.{ .solidify = true });
-                return .{ .type = .{ .list = list } };
+                return .{
+                    .line_number = self.line_number,
+                    .type = .{ .list = list }
+                };
             },
             else => return error.MissplacedSymbol,
         }
@@ -330,7 +338,7 @@ pub const Tokenizer = struct {
         defer params.deinit(alloc);
 
         var c:u8 = try self.next(.{ .null_on_eof = false });
-        c =while (true) : (c = try self.next(.{ .null_on_eof = false })) {
+        c = while (true) : (c = try self.next(.{ .null_on_eof = false })) {
             if (std.ascii.isWhitespace(c) or c == ')') {
                 if (mem.items.len == 0 and c == ')') break try self.peekEOF();
                 var type_hint_string:?[]u8 = null;
@@ -392,7 +400,10 @@ pub const Tokenizer = struct {
         block.params = try params.toOwnedSlice(self.alloc);
         return .{
             .name = fn_name,
-            .token = .{ .type = .{ .block = block } }
+            .token = .{
+                .line_number = self.line_number,
+                .type = .{ .block = block }
+            }
         };
     }
 
@@ -426,14 +437,17 @@ pub const Tokenizer = struct {
                     value.* = try Token.TokenType.new(raw);
                     const collected:CollectResult = .{
                         .name = name.?,
-                        .token = .{ .type = .{ .ident = .{ .variable = .{
-                            .type = matched_type,
-                            .value = .{ .declaration = .{
-                                .name = name.?, 
-                                .value = value,
-                            }}
-                        }}}, // TODO: maybe I should refactor this struct
-                    }};
+                        .token = .{
+                            .line_number = self.line_number,
+                            .type = .{ .ident = .{ .variable = .{
+                                .type = matched_type,
+                                .value = .{ .declaration = .{
+                                    .name = name.?, 
+                                    .value = value,
+                                }}
+                            }}}, // TODO: maybe I should refactor this struct
+                        }
+                    };
                     return collected;
                 }
                 continue;
@@ -452,13 +466,13 @@ pub const Tokenizer = struct {
     ) !struct{ skip:bool = true } {
         if (mem.items.len > 0) {
             const raw = try mem.toOwnedSlice(self.alloc);
-            const new_token = (try Token.make(raw)).?;
+            const new_token = (try Token.make(self.line_number, raw)).?;
             if (new_token.type == .keyword) switch (new_token.type.keyword) {
                 .@"fn" => {
 
                     if (Token.byte_to_symbol(b)) |_|
                         try res.code.append(
-                            self.alloc, (try Token.make_from_byte(b)).?
+                            self.alloc, (try Token.make_from_byte(self.line_number, b)).?
                         );
 
                     const function = try self.collect_fn(alloc, mem);
@@ -479,7 +493,9 @@ pub const Tokenizer = struct {
         }
 
         if (Token.byte_looks_like_symbol(b))
-            try res.code.append(self.alloc, (try Token.make_from_byte(b)).?);
+            try res.code.append(self.alloc,
+                (try Token.make_from_byte(self.line_number, b)).?
+            );
 
         return .{};
     }

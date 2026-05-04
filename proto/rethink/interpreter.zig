@@ -186,7 +186,7 @@ pub const Block = struct {
         return null;
     }
 
-    pub fn exec(self:*Block, name:[]u8, args:[]Token) InterpreterError!?Token{
+    pub fn exec(self:*Block, name:[]u8, args:[]Token) InterpreterError!?Token {
         _ = .{ self, name, args };
         unreachable; // TODO: shell commands
     }
@@ -238,7 +238,7 @@ pub const Block = struct {
                 .arg => |a| switch (a) {
                     .plain => |n| self.args.?[n],
                     .keyword => |key| switch (key) {
-                        .@"count" => Token.mk_num(usize, self.args.?.len),
+                        .@"count" => Token.mk_num(null, usize, self.args.?.len),
                         .@",,", .splat => @panic("TODO: splat args"),
                     },
                     else => unreachable,
@@ -255,7 +255,7 @@ pub const Block = struct {
                             },
                             .keyword => |keyword| switch (keyword) {
                                 .count => return @constCast(&[_]Token{Token.mk_num(
-                                    usize, match.type.list.count()
+                                    null, usize, match.type.list.count()
                                 )}),
                                 .splat, .@",," => {
                                     var m = (self.namespace.get(name.name) orelse {
