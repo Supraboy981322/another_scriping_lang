@@ -200,7 +200,7 @@ pub const Tokenizer = struct {
         var label_name:?[]u8 = null;
         var string:?u8 = null;
 
-        while (try self.next(.{})) |b| {
+        loop: while (try self.next(.{})) |b| {
             if (esc) {
                 esc = false;
                 try mem.append(alloc, b);
@@ -221,9 +221,16 @@ pub const Tokenizer = struct {
                 continue;
             }
 
-            if (std.ascii.isWhitespace(b) or Token.byte_looks_like_symbol(b)) {
-                const info = try self.whitespace(alloc, &res, &mem, b);
-                if (info.skip) continue;
+            blk: {
+                for ([_]bool{
+                    std.ascii.isWhitespace(b),
+                    Token.byte_looks_like_symbol(b),
+                    b == '(',
+                }) |check| if (check) {
+                    const info = try self.whitespace(alloc, &res, &mem, b);
+                    if (info.skip) continue :loop;
+                    break :blk;
+                };
             }
 
             switch (b) {
@@ -422,7 +429,16 @@ pub const Tokenizer = struct {
 
         while (std.ascii.isWhitespace(try self.peekEOF())) self.reader.?.toss(1);
         while (try self.next(.{})) |b| {
-            if (std.ascii.isWhitespace(b) or b == ';') if (mem.items.len > 0) {
+            const do_split =
+                for ([_]bool{
+                    std.ascii.isWhitespace(b),
+                    Token.byte_looks_like_symbol(b),
+                    b == ';',
+                }) |check| {
+                    if (check) break true;
+                } else
+                    false;
+            if (do_split and mem.items.len > 0) {
                 const raw = try mem.toOwnedSlice(self.alloc);
                 if (name == null)
                     name = raw
@@ -451,7 +467,7 @@ pub const Tokenizer = struct {
                     return collected;
                 }
                 continue;
-            };
+            }
             try mem.append(alloc, b);
         }
         return error.EndOfFile;
