@@ -22,6 +22,7 @@ pub const TokenizerError = error {
     UnexpectedByte,
     InvalidSymbol,
     NotInitialized,
+    InvalidBuiltin,
 } || std.mem.Allocator.Error
   || hlp.DepthTrackerError
   || SeekError
@@ -423,14 +424,14 @@ pub const Tokenizer = struct {
                     value.* = try Token.TokenType.new(raw);
                     const collected:CollectResult = .{
                         .name = name.?,
-                        .token = .{ .type = .{ .variable = .{
+                        .token = .{ .type = .{ .ident = .{ .variable = .{
                             .type = matched_type,
                             .value = .{ .declaration = .{
                                 .name = name.?, 
                                 .value = value,
                             }}
                         }}}, // TODO: maybe I should refactor this struct
-                    };
+                    }};
                     return collected;
                 }
                 continue;

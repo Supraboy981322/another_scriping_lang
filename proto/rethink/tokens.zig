@@ -119,6 +119,18 @@ pub const Variable = struct {
     }
 };
 
+pub const Func = union(enum) {
+    builtin:Builtins,  //starts with '#'
+    local:[]u8,
+    external:[]u8, //starts with '@'
+};
+
+pub const Ident = union(enum) {
+    variable:Variable,
+    func:Func,
+    unknown:[]u8,
+};
+
 pub const Token = union(enum) {
     type:TokenType,
 
@@ -126,9 +138,8 @@ pub const Token = union(enum) {
     pub const TokenType = union(enum) {
         string:[]u8,
         block:Block,
-        ident:[]u8,
+        ident:Ident,
         symbol:Symbols,
-        variable:Variable,
         keyword:Keywords,
         list:List,
         bool:bool,
@@ -191,8 +202,6 @@ pub const Token = union(enum) {
         @"(", @")",
 
         @"=",
-
-        @"@", @"#", // TODO: identifier for builtins and calling external code
     };
 
     pub fn byte_looks_like_symbol(b:u8) bool {
@@ -236,13 +245,22 @@ pub const Token = union(enum) {
 
         if(raw.len > 1) {
             if (raw[0] == '$')
-                return .{ .type = .{ .variable = try Variable.make(raw[1..]) } };
+                return .{ .type = .{ .ident = .{ .variable = try Variable.make(raw[1..]) } } };
+
+            if (raw[0] == '#') return .{ .type = .{ .ident = .{ .func = .{
+                .builtin = std.meta.stringToEnum(Builtins, raw[1..]) orelse {
+                    return error.InvalidBuiltin;
+                }
+            } } } };
+
+            if (raw[0] == '@') @panic("TODO: module system");
 
             if (raw[0] == '"' and raw[raw.len-1] == '"')
                 return .{ .type = .{ .string = raw[1..raw.len-1] } };
         }
 
-        return .{ .type = .{ .ident = raw } };
+        //return .{ .type = .{ .ident = .{ .unknown = raw } } };
+        return .{ .type = .{ .ident = .{ .func = .{ .local = raw } } } };
     }
 
     pub fn make_from_byte(b:u8) !?Token {
@@ -257,6 +275,22 @@ pub const Token = union(enum) {
                 else => @compileError("unsupported type for new() helper")
             }
         };
+    }
+
+    pub fn is_variable(self:*Token) bool {
+        return
+            if (self.type == .ident)
+                self.type.ident == .variable
+            else
+                false;
+    }
+
+    pub fn is_func(self:*Token) bool {
+        return
+            if (self.type == .ident)
+                self.type.ident == .func
+            else
+                false;
     }
 };
 

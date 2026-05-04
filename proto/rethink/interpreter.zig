@@ -102,7 +102,74 @@ pub const Block = struct {
         _ = self.arena.deinit();
     }
 
-    pub fn run(self:*Block, args:[]Token) !?Token {
+    pub fn call(self:*Block, func:types.Func, i:*usize, tok:Token) !?Token {
+        const passed_args = try self.collect_args(i, tok);
+        defer self.alloc.free(passed_args);
+        switch (func) {
+            .builtin => |builtin| return try Builtins.run(builtin, passed_args),
+            .local => |local| {
+                if (self.namespace.get(local)) |*f| {
+                    if (f.tok.type != .block)
+                        return error.NotFunction
+                    else if (f.tok.type.block.name) |_|
+                        return try @constCast(f).tok.type.block.run(passed_args)
+                    else
+                        return error.NotFunction;
+                } else {
+                    std.debug.print("\n{s}(...) <- ", .{local});
+                    return error.UnknownIdentifier;
+                }
+            },
+            .external => unreachable, // TODO: module system
+        }
+        unreachable; //uncaught; 'func' couldn't return value
+    }
+
+    pub fn do_var(self:*Block, variable:Variable, i:*usize) !?Token {
+        switch (variable.value) {
+            .declaration => |declaration| {
+                // TODO: refactor namespace to track var type (set vs let)
+                try self.to_namespace(
+                    declaration.name,
+                    variable.type orelse .set != .set,
+                    .{ .type = declaration.value.* }
+                );
+            },
+            .name => |name| {
+                if (self.code.items.len <= i.*+2)
+                    return error.EndOfFile;
+                i.* += 1;
+                var tok = self.code.items[i.*];
+                i.* += 1;
+                for ([_]bool{
+                    tok.type == .symbol,
+                    tok.type.symbol == .@"=",
+                }) |check|
+                    if (!check) return error.UnexpectedToken;
+                tok = self.code.items[i.*];
+                const assignee = (try self.resolve_var(variable))[0];
+                const assigner = if (tok.is_variable()) blk: {
+                    const resolved = try self.resolve_var(tok.type.ident.variable);
+                    // TODO: splat into set of vars
+                    if (resolved.len > 1) return error.InvalidAssignment;
+                    break :blk resolved[0];
+                } else
+                    tok;
+                const have = @intFromEnum(assigner.type);
+                const want = @intFromEnum(assignee.type);
+                if (have != want) return error.TypeMissmatch;
+                const original = self.namespace.getPtr(name.name) orelse unreachable; //uncaught
+                if (original.*.changeable)
+                    original.*.tok = assigner
+                else
+                    return error.NotChangeable;
+            },
+            else => return error.UnexpectedToken,
+        }
+        return null;
+    }
+
+    pub fn run(self:*Block, args:[]Token) InterpreterError!?Token {
         errdefer std.debug.print("|{s}| <- ", .{self.name orelse "[unnamed]"});
 
         try self.load_args(args);
@@ -112,22 +179,11 @@ pub const Block = struct {
             switch (tok.type) {
 
                 .ident => |ident| {
-                    const passed_args = try self.collect_args(&i, tok);
-                    defer self.alloc.free(passed_args);
-                    if (Builtins.is_builtin(ident)) {
-                        _ = try Builtins.run(ident, passed_args);
-                    } else {
-                        if (self.namespace.get(ident)) |*func| {
-                            if (func.tok.type != .block)
-                                return error.NotFunction
-                            else if (func.tok.type.block.name) |_|
-                                _ = try @constCast(func).tok.type.block.run(passed_args)
-                            else
-                                return error.NotFunction;
-                        } else {
-                            std.debug.print("\n{s}(...) <- ", .{ident});
-                            return error.UnknownIdentifier;
-                        }
+                    switch (ident) {
+                        .func => |func| _ = try self.call(func, &i, tok),
+                        .variable => |variable| _ = try self.do_var(variable, &i),
+                        .unknown => |thing|
+                            std.debug.panic("uncaught unknown ident: |{s}|\n", .{thing}),
                     }
                 },
 
@@ -145,45 +201,6 @@ pub const Block = struct {
                     std.debug.print("{any}\n", .{symbol});
                     return error.MissplacedSymbol;
                 },
-                .variable => |variable| switch (variable.value) {
-                    .declaration => |declaration| {
-                        // TODO: refactor namespace to track var type (set vs let)
-                        try self.to_namespace(
-                            declaration.name,
-                            variable.type orelse .set != .set,
-                            .{ .type = declaration.value.* }
-                        );
-                    },
-                    .name => |name| {
-                        if (self.code.items.len <= i+2)
-                            return error.EndOfFile;
-                        i += 1;
-                        tok = self.code.items[i];
-                        i += 1;
-                        for ([_]bool{
-                            tok.type == .symbol,
-                            tok.type.symbol == .@"=",
-                        }) |check|
-                            if (!check) return error.UnexpectedToken;
-                        tok = self.code.items[i];
-                        const assignee = (try self.resolve_var(variable))[0];
-                        const assigner = if (tok.type == .variable) blk: {
-                            const resolved = try self.resolve_var(tok.type.variable);
-                            if (resolved.len > 1) return error.InvalidAssignment; // TODO: splat into set of vars
-                            break :blk resolved[0];
-                        } else
-                            tok;
-                        const have = @intFromEnum(assigner.type);
-                        const want = @intFromEnum(assignee.type);
-                        if (have != want) return error.TypeMissmatch;
-                        const original = self.namespace.getPtr(name.name) orelse unreachable; //uncaught
-                        if (original.*.changeable)
-                            original.*.tok = assigner
-                        else
-                            return error.NotChangeable;
-                    },
-                    else => return error.UnexpectedToken,
-                },
 
                 else => std.debug.panic("{any}", .{tok.type}), //Block.run()
             }
@@ -192,9 +209,9 @@ pub const Block = struct {
     }
 
     pub fn resolve_var(self:*Block, origin:Variable) ![]Token {
-        var token:Token = .{ .type = .{ .variable = origin } };
-        while (token.type == .variable) {
-            const variable = token.type.variable;
+        var token:Token = .{ .type = .{ .ident = .{ .variable = origin } } };
+        while (token.is_variable()) {
+            const variable = token.type.ident.variable;
             token = switch (variable.value) {
                 .arg => |a| switch (a) {
                     .plain => |n| self.args.?[n],
@@ -227,7 +244,7 @@ pub const Block = struct {
                             }
                         };
                     }
-                    if (match.type != .variable) return @constCast(&[_]Token{ match });
+                    if (!match.is_variable()) return @constCast(&[_]Token{ match });
                     break :blk match;
                 },
                 else => unreachable,
@@ -260,13 +277,15 @@ pub const Block = struct {
                 continue;
             }
             switch (tok.type) {
-                .variable => |variable| {
-                    const resolved = try self.resolve_var(variable);
-                    for (resolved) |v|
-                        try mem.append(self.alloc, v);
-                    continue;
+                .ident => |ident| switch (ident) {
+                    .variable => |variable| {
+                        const resolved = try self.resolve_var(variable);
+                        for (resolved) |v|
+                            try mem.append(self.alloc, v);
+                        continue;
+                    },
+                    else => unreachable, // TODO: values from function calls
                 },
-                .ident => unreachable,
                 .block => @panic("TODO: nested function calls"),
                 else => {},
             }

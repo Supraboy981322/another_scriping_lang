@@ -7,13 +7,10 @@ const Block = types.Block;
 pub const Builtins = enum {
     print,
 
-    pub fn run(name:[]u8, args:[]Token) !void {
-        const matched = std.meta.stringToEnum(
-            Builtins, name
-        ) orelse return error.InvalidBuiltin;
-        switch (matched) {
+    pub fn run(which:Builtins, args:[]Token) !?Token {
+        return switch (which) {
             .print => try print(args),
-        }
+        };
     }
 
     pub fn is_builtin(name:[]u8) bool {
@@ -21,7 +18,7 @@ pub const Builtins = enum {
     }
 };
 
-pub fn print(args:[]Token) !void {
+pub fn print(args:[]Token) !?Token {
     defer std.debug.print("\n", .{});
     for (args) |a| {
         switch (a.type) {
@@ -42,4 +39,5 @@ pub fn print(args:[]Token) !void {
             else => std.debug.panic("{any}\n", .{a.type}),
         }
     }
+    return null;
 }
