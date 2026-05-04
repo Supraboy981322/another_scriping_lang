@@ -62,7 +62,13 @@ pub const Finalizer = struct {
                 else
                     ident_raw;
             for (block.params) |p| if (p.name) |param_name|
-                if (std.mem.eql(u8, name, param_name)) continue :loop;
+                if (std.mem.eql(u8, name, param_name)) {
+                    tok.type.ident = .{ .variable = .{
+                        .type = .set,
+                        .value = .{ .name = .{ .name = name } }
+                    } };
+                    continue :loop;
+                };
 
             const match =
                 if (block.namespace.get(name)) |from_namespace|
@@ -90,9 +96,8 @@ pub const Finalizer = struct {
         } else switch (tok.type) {
             .block => try self.resolve_idents(&tok.type.block),
             .ident => |ident| if (tok.is_variable()) {
-                if (ident.variable.value == .declaration) {
+                if (ident.variable.value == .declaration)
                     try declarations.append(self.alloc, tok.*);
-                }
             },
             else => {},
         };
