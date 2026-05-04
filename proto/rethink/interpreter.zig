@@ -166,8 +166,15 @@ pub const Block = struct {
                 for ([_]bool{
                     tok.type == .symbol,
                     tok.type.symbol == .@"=",
-                }) |check|
-                    if (!check) return error.UnexpectedToken;
+                }) |check| {
+                    if (!check) {
+                        std.debug.print(
+                            "|{s}| (line {d} of {s})\n",
+                            .{@tagName(tok.type), tok.line_number, self.name orelse "[unlabled block]"}
+                        );
+                        return error.UnexpectedToken;
+                    }
+                }
                 tok = self.code.items[i.*];
                 const assignee = (try self.resolve_var(variable))[0];
                 const assigner = if (tok.is_variable()) blk: {
@@ -208,7 +215,12 @@ pub const Block = struct {
                 .ident => |ident| {
                     switch (ident) {
                         .func => |func| _ = try self.call(func, &i, tok),
-                        .variable => |variable| _ = try self.do_var(variable, &i),
+                        .variable => |variable| {
+                            _ = self.do_var(variable, &i) catch |e| {
+                                std.debug.print("({s})", .{variable.value.name.name});
+                                return e;
+                            };
+                        },
                         .unknown => |thing|
                             std.debug.panic("uncaught unknown ident: |{s}|\n", .{thing}),
                     }
