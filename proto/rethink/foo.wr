@@ -7,44 +7,44 @@ fn main(args:list[string]) {
 }
 
 arg_count: {
-  print("arg count:" $[count]);
+  #print("arg count:" $[count]);
 }
 
 block_test: {
   {}
   {
-    print("block test");
+    #print("block test");
   }
 }
 
 fn list_test(foo:list[string]) {
-    print("passing list directly: " $foo);
+    #print("passing list directly: " $foo);
 
-    print("keyword splat ([,,] and [splat]):");
+    #print("keyword splat ([,,] and [splat]):");
     arg_count("keyword splat:" $foo[splat]);
     arg_count("symbol splat:" $foo[,,]);
 
-    print("indexing:" $foo[0]);
+    #print("indexing:" $foo[0]);
 }
 
 fn list_literal() {
-  print("list literal" .[ "foo" "bar" "baz" ]);
+  #print("list literal" .[ "foo" "bar" "baz" ]);
   arg_count("list literal" .[ "foo" "bar" "baz" ]);
 }
 
 fn var_test() {
-  print("declare 'foo'");
+  #print("declare 'foo'");
   set foo = "bar";
-  print("'foo' is" $foo);
+  #print("'foo' is" $foo);
 
-  print("declare 'baz'");
+  #print("declare 'baz'");
   let baz = "qux";
-  print("'baz' is" $baz);
+  #print("'baz' is" $baz);
 
-  print("assign 'baz'");
+  #print("assign 'baz'");
   $baz = "buzz";
-  print("'baz' is" $baz);
+  #print("'baz' is" $baz);
 
-  print("print both");
-  print("both:" $foo $baz);
+  #print("print both");
+  #print("both:" $foo $baz);
 }
