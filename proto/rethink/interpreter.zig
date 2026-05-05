@@ -8,6 +8,8 @@ const Param = types.Param;
 const List = types.List;
 const Builtins = @import("builtins.zig").Builtins;
 
+const to_string = @import("builtins.zig").to_string;
+
 pub const InterpreterError = error {
     EndOfFile,
     IndexOutOfBounds,
@@ -23,7 +25,9 @@ pub const InterpreterError = error {
     UnknownVariable,
     WrongArgCount,
     ArgTypeMissmatch,
-} || std.mem.Allocator.Error;
+} || std.mem.Allocator.Error
+  || std.process.RunError
+;
 
 pub const Interpreter = struct {
     alloc:std.mem.Allocator,
@@ -36,7 +40,7 @@ pub const Interpreter = struct {
         };
     }
 
-    pub fn do(_:*Interpreter, base:std.process.Init.Minimal, block:Block) !?Token {
+    pub fn do(self:*Interpreter, base:std.process.Init.Minimal, block:Block) !?Token {
         const alloc = block.alloc;
         if (block.namespace.get("main")) |*entry| {
             if (entry.tok.type == .block) {
@@ -77,7 +81,7 @@ pub const Interpreter = struct {
                         value.tok,
                     );
                 }
-                _ = try main.run(args.items);
+                _ = try main.run(self.io, args.items);
             } else
                 @panic("main not a label");
         } else
@@ -87,6 +91,7 @@ pub const Interpreter = struct {
 };
 
 pub const Block = struct {
+    io:std.Io, //ugh
     params:[]Param,
     args:?[]Token = null,
     name:?[]u8, //null for root
@@ -101,8 +106,14 @@ pub const Block = struct {
         changeable:bool
     };
 
-    pub fn init(alloc:std.mem.Allocator, name:?[]u8, params:?[]Param, is_fn:bool) Block {
+    pub fn init(
+        alloc:std.mem.Allocator,
+        name:?[]u8,
+        params:?[]Param,
+        is_fn:bool
+    ) Block {
         return .{
+            .io = undefined,
             .namespace = .init(alloc),
             .alloc = alloc,
             .arena = .init(alloc),
@@ -155,7 +166,7 @@ pub const Block = struct {
                     if (f.tok.type != .block)
                         return error.NotFunction
                     else if (f.tok.type.block.name) |_|
-                        return try @constCast(f).tok.type.block.run(passed_args)
+                        return try @constCast(f).tok.type.block.run(self.io, passed_args)
                     else
                         return error.NotFunction;
                 } else {
@@ -251,8 +262,9 @@ pub const Block = struct {
         unreachable; // TODO: shell commands
     }
 
-    pub fn run(self:*Block, args:[]Token) InterpreterError!?Token {
+    pub fn run(self:*Block, io:std.Io, args:[]Token) InterpreterError!?Token {
         errdefer std.debug.print("|{s}| <- ", .{self.name orelse "[unnamed]"});
+        self.io = io;
 
         try self.load_args(args);
         var i:usize = 0;
@@ -281,7 +293,7 @@ pub const Block = struct {
                         const v = entry.value_ptr.*;
                         try blk.to_namespace(@constCast(entry.key_ptr.*), v.changeable, v.tok);
                     }
-                    _ = try blk.run(@constCast(&[_]Token{}));
+                    _ = try blk.run(self.io, @constCast(&[_]Token{}));
                 },
 
                 .symbol => |symbol| if (symbol != .@";") {
