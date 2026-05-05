@@ -57,5 +57,6 @@ fn test_to_string() {
 }
 
 fn shell_test() {
-  #print($curl("https://google.com"));
+  let foo = $curl( "-L" "https://archive.google.com/heart" );
+  #print(foo);
 }
