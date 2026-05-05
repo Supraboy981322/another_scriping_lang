@@ -69,7 +69,7 @@ pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
     var res:std.ArrayList(u8) = .empty;
     defer res.deinit(alloc);
     defer _ = res.pop();
-    for (args) |arg| {
+    for (args, 0..) |arg, i| {
         switch (arg.type) {
             .string => |str| try res.appendSlice(alloc, str),
             .bool => |b| try res.appendSlice(alloc, if (b) "true" else "false"),
@@ -89,7 +89,7 @@ pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
                 "<<block: {s}>>",
                 .{blk.name orelse "[unlabeled]"}
             ),
-            else => std.debug.panic("{any}\n", .{arg}),
+            else => std.debug.panic("({d}) {any}\n", .{i, arg}),
         }
         try res.append(alloc, ' ');
     }
