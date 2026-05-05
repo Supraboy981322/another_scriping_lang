@@ -12,6 +12,7 @@ pub const InterpreterError = error {
     EndOfFile,
     IndexOutOfBounds,
     InvalidAssignment,
+    NullValue,
     // TODO: move these to finalizer
     UnknownIdentifier,
     NotFunction, 
@@ -371,6 +372,12 @@ pub const Block = struct {
                         for (resolved) |v|
                             try mem.append(self.alloc, v);
                         continue;
+                    },
+                    .func => |func| {
+                        if (try self.call(func, &i, .{}, tok)) |return_value|
+                            try mem.append(self.alloc, return_value)
+                        else
+                            return error.NullValue;
                     },
                     else => unreachable, // TODO: values from function calls
                 },
