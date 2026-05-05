@@ -141,11 +141,10 @@ pub const Block = struct {
             else blk: {
                 var res:std.ArrayList(Token) = .empty;
                 defer res.deinit(self.alloc);
-                for (tok.value) |ident|
+                // FIXME: figure out the strange memory behavior
+                //  (probably use-after free) for a less hacky "solution"
+                for (tok.value[2..tok.value.len-1]) |ident|
                     try res.append(self.alloc, .no_line_num(ident.*));
-                for (res.items) |itm| {
-                    std.debug.print("{d} : {any}\n", .{@intFromEnum(itm.type), itm.type});
-                }
                 break :blk try res.toOwnedSlice(self.alloc);
             };
         defer self.alloc.free(passed_args);
