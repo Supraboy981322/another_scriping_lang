@@ -169,14 +169,40 @@ pub const Block = struct {
         unreachable; //uncaught; 'func' couldn't return value
     }
 
+    pub fn resolve_declaration(
+        self:*Block,
+        declaration:Variable.Value.Declaration,
+        i:*usize
+    ) !Token.TokenType {
+        for (0..declaration.value.len) |j| {
+            const tok = declaration.value[j].*;
+            switch (tok) {
+                .ident => |ident| switch (ident) {
+                    .func => |func| {
+                        const res = (try self.call(
+                            func, i, .{ .from_declaration = true },
+                            declaration,
+                        )).?.type;
+                        std.debug.print("|{s}|\n", .{res.string});
+                        return res;
+                    },
+                    else => {},
+                },
+                else => {},
+            }
+        } else
+            return declaration.value[0].*;
+    }
+
     pub fn do_var(self:*Block, variable:Variable, i:*usize) !?Token {
         switch (variable.value) {
             .declaration => |declaration| {
+                const value = try self.resolve_declaration(declaration, i);
                 // TODO: refactor namespace to track var type (set vs let)
                 try self.to_namespace(
                     declaration.name,
                     variable.type orelse .set != .set,
-                    .no_line_num(declaration.value.*)
+                    .no_line_num(value)
                 );
             },
             .name => |name| {
