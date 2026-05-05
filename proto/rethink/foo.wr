@@ -1,4 +1,5 @@
 fn main(args:list[string]) {
+  test_to_string();
   var_test();
   arg_count("foo" "bar" "baz quz");
   list_test(args);
@@ -47,4 +48,9 @@ fn var_test() {
 
   #print("print both");
   #print("both:" foo baz);
+}
+
+fn test_to_string() {
+  let foo = #to_string(.[ "foo" "bar" ] "baz" );
+  #print(foo);
 }
