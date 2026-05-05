@@ -123,8 +123,30 @@ pub const Block = struct {
         _ = self.arena.deinit();
     }
 
-    pub fn call(self:*Block, func:types.Func, i:*usize, tok:Token) !?Token {
-        const passed_args = try self.collect_args(i, tok);
+    pub const CallOpts = struct {
+        from_declaration:bool = false,
+    };
+
+    pub fn call(
+        self:*Block,
+        func:types.Func,
+        i:*usize,
+        comptime opts:CallOpts,
+        tok:if (opts.from_declaration) Variable.Value.Declaration else Token,
+    ) InterpreterError!?Token {
+        const passed_args =
+            if (!opts.from_declaration)
+                try self.collect_args(i, tok)
+            else blk: {
+                var res:std.ArrayList(Token) = .empty;
+                defer res.deinit(self.alloc);
+                for (tok.value) |ident|
+                    try res.append(self.alloc, .no_line_num(ident.*));
+                for (res.items) |itm| {
+                    std.debug.print("{d} : {any}\n", .{@intFromEnum(itm.type), itm.type});
+                }
+                break :blk try res.toOwnedSlice(self.alloc);
+            };
         defer self.alloc.free(passed_args);
         switch (func) {
             .builtin => |builtin| return try Builtins.run(self.alloc, builtin, passed_args),
@@ -214,10 +236,10 @@ pub const Block = struct {
 
                 .ident => |ident| {
                     switch (ident) {
-                        .func => |func| _ = try self.call(func, &i, tok),
+                        .func => |func| _ = try self.call(func, &i, .{}, tok),
                         .variable => |variable| {
                             _ = self.do_var(variable, &i) catch |e| {
-                                std.debug.print("({s})", .{variable.value.name.name});
+                                std.debug.print("({any})", .{variable.value});
                                 return e;
                             };
                         },
