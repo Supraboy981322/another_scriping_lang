@@ -89,7 +89,7 @@ pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
                 "<<block: {s}>>",
                 .{blk.name orelse "[unlabeled]"}
             ),
-            else => unreachable,
+            else => std.debug.panic("{any}\n", .{arg}),
         }
         try res.append(alloc, ' ');
     }
