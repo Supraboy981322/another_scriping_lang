@@ -183,7 +183,6 @@ pub const Block = struct {
                             func, i, .{ .from_declaration = true },
                             declaration,
                         )).?.type;
-                        std.debug.print("|{s}|\n", .{res.string});
                         return res;
                     },
                     else => {},
