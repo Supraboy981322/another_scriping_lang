@@ -49,7 +49,10 @@ pub fn main(init:std.process.Init) !void {
     var tokens = try tokenizer.do(reader, null);
 
     var finalizer:@import("finalizer.zig").Finalizer = try .init(alloc);
-    _ = try finalizer.do(&tokens);
+    _ = try finalizer.do(&tokens, .{
+        .verify_ident_resolving = true,
+        .panic_on_uncaught = true,
+    });
 
     var interpreter:@import("interpreter.zig").Interpreter = try .init(init.io, alloc);
     _ = try interpreter.do(init.minimal, tokens);

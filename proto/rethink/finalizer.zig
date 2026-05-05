@@ -103,11 +103,58 @@ pub const Finalizer = struct {
         };
     }
 
-    pub fn do(self:*Finalizer, block:*types.Block) !void {
+    pub const FinalizeOpts = struct {
+        verify_ident_resolving:bool = false,
+        panic_on_uncaught:bool = false,
+    };
+
+    pub fn verify_resolved(
+        self:*Finalizer,
+        block:*types.Block,
+        comptime opts:FinalizeOpts
+    ) if (opts.panic_on_uncaught) void else error{UncaughtUnknownIdent}!void {
+        for (block.code.items) |tok| switch (tok.type) {
+            .ident => |ident| switch (ident) {
+                .unknown => |unknown| {
+                    if (opts.panic_on_uncaught)
+                        std.debug.panic("uncaught unknown ident: |{s}|", .{unknown})
+                    else
+                        return error.UncaughtUnknownIdent;
+                },
+                .variable => |variable| switch (variable.value) {
+                    .declaration => |declaration| for (declaration.value) |token| {
+                        if (token.ident == .unknown)
+                            if (opts.panic_on_uncaught)
+                                std.debug.panic(
+                                "uncaught unknown ident: |{any}|", .{token.ident.unknown}
+                            )
+                            else
+                                return error.UncaughtUnknownIdent;
+                    },
+                    else => {},
+                },
+                else => {},
+            },
+            .block => {
+                if (opts.panic_on_uncaught)
+                    self.verify_resolved(block, opts)
+                else
+                    try self.verify_resolved(block, opts);
+            },
+            else => {},
+        };
+    }
+
+    pub fn do(self:*Finalizer, block:*types.Block, comptime opts:FinalizeOpts) !void {
         try self.logger.stage(.start, "finalizer", .{});
         defer self.logger.stage(.done, "finalizer", .{}) catch {};
         try self.recurse_namespace(block, null);
         try self.resolve_idents(block);
+        if (opts.verify_ident_resolving)
+            if (opts.panic_on_uncaught)
+                self.verify_resolved(block, opts)
+            else
+                try self.verify_resolved(block, opts);
         return ;
     }
 };
