@@ -82,7 +82,9 @@ pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
                 try res.appendSlice(alloc, ".[ ");
                 const as_toks = try @constCast(list).splat(alloc);
                 const as_string = try to_string(alloc, as_toks);
-                try res.appendSlice(alloc, as_string.type.string);
+                const str = as_string.type.string;
+                try res.appendSlice(alloc, try alloc.dupe(u8, str[0..str.len-1]));
+                alloc.free(as_string.type.string);
                 try res.appendSlice(alloc, " ]");
             },
             .block => |blk| try res.print(alloc,
