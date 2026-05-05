@@ -448,31 +448,45 @@ pub const Tokenizer = struct {
             const do_split = is_symbol or std.ascii.isWhitespace(b);
             if (do_split and mem.items.len > 0) {
                 const raw = try mem.toOwnedSlice(self.alloc);
-                if (name == null)
-                    name = raw
-                else if (symbol == null) {
-                    symbol = std.meta.stringToEnum(
-                        Token.Symbols, raw
-                    ) orelse {
-                        return error.InvalidSymbol;
-                    };
-                } else {
-                    const value = try self.alloc.create(Token.TokenType);
-                    value.* = try Token.TokenType.new(raw);
-                    const collected:CollectResult = .{
-                        .name = name.?,
-                        .token = .{
-                            .line_number = self.line_number,
-                            .type = .{ .ident = .{ .variable = .{
-                                .type = matched_type,
-                                .value = .{ .declaration = .{
-                                    .name = name.?, 
-                                    .value = value,
-                                }}
-                            }}}, // TODO: maybe I should refactor this struct
-                        }
-                    };
-                    return collected;
+                if (name == null) {
+                    name = raw;
+                    continue;
+                }
+                const value = try alloc.create(Token.TokenType);
+                value.* = try Token.TokenType.new(raw);
+                try value_toks.append(self.alloc, value);
+            }
+
+            if (b == ';') {
+                return .{
+                    .name = name.?,
+                    .token = .{
+                        .line_number = self.line_number,
+                        .type = .{ .ident = .{ .variable = .{
+                            .type = matched_type,
+                            .value = .{ .declaration = .{
+                                .name = name.?, 
+                                .value = try value_toks.toOwnedSlice(self.alloc),
+                            }}
+                        }}}, // TODO: maybe I should refactor this struct
+                    }
+                };
+            } else if (b == '.') {
+                const literal_type = try self.next(.{}) orelse return error.EndOfFile;
+                switch (literal_type) {
+                    '{' => @panic("TODO: object literal"),
+                    '[' => {
+                        var res = try self.alloc.create(Token.TokenType);
+                        res.* = .{ .list = .init(.DYNAMIC) };
+                        const values = try self.collect_within(
+                            '[', ']', self.alloc, mem
+                        );
+                        try res.list.append_many_fat(self.alloc, values);
+                        _ = try res.list.check_type(.{ .solidify = true });
+                        try value_toks.append(self.alloc, res);
+                        continue;
+                    },
+                    else => return error.MissplacedSymbol,
                 }
             }
 
