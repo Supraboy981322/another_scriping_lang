@@ -68,7 +68,6 @@ pub fn print(args:[]Token) !?Token {
 pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
     var res:std.ArrayList(u8) = .empty;
     defer res.deinit(alloc);
-    defer _ = res.pop();
     for (args, 0..) |arg, i| {
         switch (arg.type) {
             .string => |str| try res.appendSlice(alloc, str),
@@ -95,5 +94,6 @@ pub fn to_string(alloc:std.mem.Allocator, args:[]Token) !Token {
         }
         try res.append(alloc, ' ');
     }
+    _ = res.pop();
     return .no_line_num(.{ .string = try res.toOwnedSlice(alloc) });
 }
