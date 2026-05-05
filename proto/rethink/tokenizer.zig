@@ -426,17 +426,26 @@ pub const Tokenizer = struct {
         var name:?[]u8 = null;
         var symbol:?Token.Symbols = null;
 
+        var value_toks:std.ArrayList(*Token.TokenType) = .empty;
+        defer value_toks.deinit(alloc);
+
         while (std.ascii.isWhitespace(try self.peekEOF())) self.reader.?.toss(1);
         while (try self.next(.{})) |b| {
-            const do_split =
-                for ([_]bool{
-                    std.ascii.isWhitespace(b),
-                    Token.byte_looks_like_symbol(b),
-                    b == ';',
-                }) |check| {
-                    if (check) break true;
-                } else
-                    false;
+            const is_symbol = Token.byte_looks_like_symbol(b);
+            if (is_symbol) if (symbol == null) {
+                symbol = std.meta.stringToEnum(
+                    Token.Symbols, &[_]u8{b}
+                ) orelse {
+                    return error.InvalidSymbol;
+                };
+            } else if (b != ';')
+                try value_toks.append(alloc,
+                    @constCast(&Token.TokenType{
+                        .symbol = Token.byte_to_symbol(b).?
+                    })
+                );
+
+            const do_split = is_symbol or std.ascii.isWhitespace(b);
             if (do_split and mem.items.len > 0) {
                 const raw = try mem.toOwnedSlice(self.alloc);
                 if (name == null)
@@ -466,7 +475,8 @@ pub const Tokenizer = struct {
                     return collected;
                 }
             }
-            try mem.append(alloc, b);
+
+            if (!is_symbol and !std.ascii.isWhitespace(b)) try mem.append(alloc, b);
         }
         return error.EndOfFile;
     }
