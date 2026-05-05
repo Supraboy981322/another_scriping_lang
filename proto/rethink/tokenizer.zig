@@ -225,7 +225,6 @@ pub const Tokenizer = struct {
                 for ([_]bool{
                     std.ascii.isWhitespace(b),
                     Token.byte_looks_like_symbol(b),
-                    b == '(',
                 }) |check| if (check) {
                     const info = try self.whitespace(alloc, &res, &mem, b);
                     if (info.skip) continue :loop;
@@ -466,7 +465,6 @@ pub const Tokenizer = struct {
                     };
                     return collected;
                 }
-                continue;
             }
             try mem.append(alloc, b);
         }

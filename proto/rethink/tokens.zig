@@ -272,7 +272,7 @@ pub const Token = struct {
                         raw[1..];
                 const match = std.meta.stringToEnum(Builtins, name) orelse {
                     // TODO: decide how I want to cancel the logger so this isn't clobbered
-                    std.debug.print("\r\x1b[2K|{s}| -> ", .{name});
+                    std.debug.panic("\r\x1b[2K|{s}| -> ", .{name});
                     return error.InvalidBuiltin;
                 };
                 return res.set_value(.{ .ident =

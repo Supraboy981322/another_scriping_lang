@@ -216,10 +216,11 @@ pub const Block = struct {
                     tok.type.symbol == .@"=",
                 }) |check| {
                     if (!check) {
-                        std.debug.print(
-                            "|{s}| (line {d} of {s})\n",
-                            .{@tagName(tok.type), tok.line_number, self.name orelse "[unlabled block]"}
-                        );
+                        std.debug.print("|{s}| (line {d} of {s})\n", .{
+                            @tagName(tok.type),
+                            tok.line_number,
+                            self.name orelse "[unlabled block]"
+                        });
                         return error.UnexpectedToken;
                     }
                 }
