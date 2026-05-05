@@ -431,7 +431,16 @@ pub const Tokenizer = struct {
         defer value_toks.deinit(alloc);
 
         while (std.ascii.isWhitespace(try self.peekEOF())) self.reader.?.toss(1);
+        var string:?u8 = null;
         while (try self.next(.{})) |b| {
+            // TODO: refactor strings and move it else where
+            if (b == '"') string = b;
+            if (string) |s| {
+                if (b == s and mem.items.len > 0) string = null;
+                try mem.append(self.alloc, b);
+                continue;
+            }
+        
             const is_symbol = Token.byte_looks_like_symbol(b);
             if (is_symbol) if (symbol == null) {
                 symbol = std.meta.stringToEnum(
