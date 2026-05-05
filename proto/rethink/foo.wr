@@ -5,6 +5,7 @@ fn main(args:list[string]) {
   list_test(args);
   block_test();
   list_literal();
+  shell_test();
 }
 
 arg_count: {
@@ -53,4 +54,8 @@ fn var_test() {
 fn test_to_string() {
   let foo = #to_string(.[ "foo" "bar" ] "baz" );
   #print(foo);
+}
+
+fn shell_test() {
+  #print($curl("https://google.com"));
 }
