@@ -174,7 +174,7 @@ pub const Block = struct {
                     return error.UnknownIdentifier;
                 }
             },
-            .shell => |cmd| _ = try self.exec(cmd, passed_args),
+            .shell => |cmd| return try self.exec(cmd, passed_args),
             .external => unreachable, // TODO: module system
         }
         unreachable; //uncaught; 'func' couldn't return value
@@ -259,7 +259,22 @@ pub const Block = struct {
 
     pub fn exec(self:*Block, name:[]u8, args:[]Token) InterpreterError!?Token {
         _ = .{ self, name, args };
-        unreachable; // TODO: shell commands
+        var arena = std.heap.ArenaAllocator.init(self.alloc);
+        defer _ = arena.deinit();
+        const tmp_alloc = arena.allocator();
+        const argv = blk: {
+            var res:std.ArrayList([]const u8) = .empty;
+            defer res.clearAndFree(tmp_alloc);
+            try res.append(tmp_alloc, try tmp_alloc.dupe(u8, name));
+            for (args) |a| {
+                const strung = try to_string(tmp_alloc, @constCast(&[_]Token{a}));
+                try res.append(tmp_alloc, @constCast(strung.type.string));
+            }
+            break :blk try res.toOwnedSlice(tmp_alloc);
+        };
+        const res = try std.process.run(tmp_alloc, self.io, .{ .argv = argv });
+        tmp_alloc.free(res.stderr);
+        return .no_line_num(.{ .string = try self.alloc.dupe(u8, res.stdout) });
     }
 
     pub fn run(self:*Block, io:std.Io, args:[]Token) InterpreterError!?Token {
