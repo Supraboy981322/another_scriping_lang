@@ -273,8 +273,12 @@ pub const Block = struct {
             break :blk try res.toOwnedSlice(tmp_alloc);
         };
         const res = try std.process.run(tmp_alloc, self.io, .{ .argv = argv });
-        tmp_alloc.free(res.stderr);
-        return .no_line_num(.{ .string = try self.alloc.dupe(u8, res.stdout) });
+        const output =
+            if (res.stdout.len < 1)
+                res.stderr
+            else
+                res.stdout;
+        return .no_line_num(.{ .string = try self.alloc.dupe(u8, output) });
     }
 
     pub fn run(self:*Block, io:std.Io, args:[]Token) InterpreterError!?Token {
