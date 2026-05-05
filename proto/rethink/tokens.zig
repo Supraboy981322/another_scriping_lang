@@ -64,7 +64,7 @@ pub const Variable = struct {
         declaration:Declaration,
         pub const Declaration = struct {
             name:[]u8,
-            value:*Token.TokenType,
+            value:[]*Token.TokenType,
         };
     };
 
