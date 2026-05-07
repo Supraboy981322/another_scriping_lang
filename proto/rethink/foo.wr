@@ -57,6 +57,11 @@ fn test_to_string() {
 }
 
 fn shell_test() {
+  #( TODO:
+      - flag literal '[...]'
+      - refactor stringing
+      - nesting function calls
+  )
   let foo = $curl( "-L" "https://archive.google.com/heart" );
   #print(foo);
 }
